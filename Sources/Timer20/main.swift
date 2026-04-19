@@ -37,6 +37,72 @@ private struct AppSettings {
     }
 }
 
+private enum L {
+    static let isEnglish = Locale.preferredLanguages.first?.hasPrefix("en") == true
+
+    static let launchAtLogin = isEnglish ? "Launch at login" : "Запускать при входе в macOS"
+    static let settings = isEnglish ? "Settings" : "Настройки"
+    static let workDuration = isEnglish ? "Work, minutes" : "Работа, минут"
+    static let restDuration = isEnglish ? "Rest, seconds" : "Отдых, секунд"
+    static let save = isEnglish ? "Save" : "Сохранить"
+    static let loginEnabled = isEnglish ? "Launch at login is enabled." : "Автозапуск включён."
+    static let loginRequiresApproval = isEnglish
+        ? "Approve in System Settings > General > Login Items."
+        : "Нужно подтвердить в System Settings > General > Login Items."
+    static let loginDisabled = isEnglish ? "Launch at login is off." : "Автозапуск выключен."
+    static let loginUnknown = isEnglish ? "Launch at login status is unknown." : "Статус автозапуска неизвестен."
+    static let launchAtLoginError = isEnglish ? "Could not change launch at login" : "Не удалось изменить автозапуск"
+    static let starting = isEnglish ? "Timer20 is starting..." : "Timer20 запускается..."
+    static let pause = isEnglish ? "Pause" : "Пауза"
+    static let resume = isEnglish ? "Resume" : "Продолжить"
+    static let startRestNow = isEnglish ? "Start rest now" : "Начать отдых сейчас"
+    static let settingsMenu = isEnglish ? "Settings..." : "Настройки..."
+    static let about = isEnglish ? "About Timer20" : "О Timer20"
+    static let quit = isEnglish ? "Quit" : "Выйти"
+    static let work = isEnglish ? "Work" : "Работа"
+    static let rest = isEnglish ? "Rest" : "Отдых"
+    static let restPause = isEnglish ? "Rest paused" : "Пауза отдыха"
+    static let continueTitle = isEnglish ? "You can continue" : "Можно продолжать"
+    static let restTitle = isEnglish ? "Time to rest" : "Пора отдохнуть"
+    static let author = isEnglish ? "Author" : "Автор"
+    static let aboutSummary = isEnglish ? "Work, then rest your eyes." : "20 минут работы, 20 секунд отдыха."
+
+    static func nextBreakBody(duration: String) -> String {
+        isEnglish ? "Next break in \(duration)." : "Следующий перерыв через \(duration)."
+    }
+
+    static func restBody(duration: String) -> String {
+        isEnglish ? "Look away for \(duration)." : "Посмотри вдаль \(duration)."
+    }
+
+    static func resetTitle(minutes: Int) -> String {
+        if isEnglish {
+            let unit = minutes == 1 ? "minute" : "minutes"
+            return "Reset \(minutes) \(unit)"
+        }
+
+        return "Сбросить \(minutes) \(russianMinuteWord(minutes))"
+    }
+
+    private static func russianMinuteWord(_ count: Int) -> String {
+        let lastTwoDigits = count % 100
+        let lastDigit = count % 10
+
+        if (11...14).contains(lastTwoDigits) {
+            return "минут"
+        }
+
+        switch lastDigit {
+        case 1:
+            return "минуту"
+        case 2...4:
+            return "минуты"
+        default:
+            return "минут"
+        }
+    }
+}
+
 private enum TimerPhase {
     case working
     case resting
@@ -52,7 +118,7 @@ private enum RunningPhase {
 private final class SettingsWindowController: NSWindowController {
     private let workField = NSTextField()
     private let restField = NSTextField()
-    private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Запускать при входе в macOS", target: nil, action: nil)
+    private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
     private let loginStatusLabel = NSTextField(labelWithString: "")
     private let onSave: (AppSettings) -> Void
 
@@ -99,13 +165,13 @@ private final class SettingsWindowController: NSWindowController {
         launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
         updateLoginStatus()
 
-        let title = NSTextField(labelWithString: "Настройки")
+        let title = NSTextField(labelWithString: L.settings)
         title.font = .boldSystemFont(ofSize: 16)
 
-        let workRow = row(label: "Работа, минут", field: workField)
-        let restRow = row(label: "Отдых, секунд", field: restField)
+        let workRow = row(label: L.workDuration, field: workField)
+        let restRow = row(label: L.restDuration, field: restField)
 
-        let saveButton = NSButton(title: "Сохранить", target: self, action: #selector(save))
+        let saveButton = NSButton(title: L.save, target: self, action: #selector(save))
         saveButton.bezelStyle = .rounded
         saveButton.keyEquivalent = "\r"
 
@@ -158,7 +224,7 @@ private final class SettingsWindowController: NSWindowController {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            showAlert(message: "Не удалось изменить автозапуск", detail: error.localizedDescription)
+            showAlert(message: L.launchAtLoginError, detail: error.localizedDescription)
         }
         updateLoginStatus()
     }
@@ -166,15 +232,15 @@ private final class SettingsWindowController: NSWindowController {
     private func updateLoginStatus() {
         switch SMAppService.mainApp.status {
         case .enabled:
-            loginStatusLabel.stringValue = "Автозапуск включён."
+            loginStatusLabel.stringValue = L.loginEnabled
         case .requiresApproval:
-            loginStatusLabel.stringValue = "Нужно подтвердить в System Settings > General > Login Items."
+            loginStatusLabel.stringValue = L.loginRequiresApproval
         case .notRegistered:
-            loginStatusLabel.stringValue = "Автозапуск выключен."
+            loginStatusLabel.stringValue = L.loginDisabled
         case .notFound:
             loginStatusLabel.stringValue = ""
         @unknown default:
-            loginStatusLabel.stringValue = "Статус автозапуска неизвестен."
+            loginStatusLabel.stringValue = L.loginUnknown
         }
     }
 
@@ -205,25 +271,25 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
         menu.addItem(startRestMenuItem)
         menu.addItem(resetMenuItem)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Настройки...", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(NSMenuItem(title: L.settingsMenu, action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "О Timer20", action: #selector(showAbout), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Выйти", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: L.about, action: #selector(showAbout), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: L.quit, action: #selector(quit), keyEquivalent: "q"))
         return menu
     }()
 
     private lazy var statusMenuItem: NSMenuItem = {
-        let item = NSMenuItem(title: "Timer20 запускается...", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: L.starting, action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
     }()
 
     private lazy var pauseMenuItem: NSMenuItem = {
-        menuItem(title: "Пауза", symbolName: "pause.fill", action: #selector(togglePause), keyEquivalent: "p")
+        menuItem(title: L.pause, symbolName: "pause.fill", action: #selector(togglePause), keyEquivalent: "p")
     }()
 
     private lazy var startRestMenuItem: NSMenuItem = {
-        menuItem(title: "Начать отдых сейчас", symbolName: "eye.fill", action: #selector(startRestNow), keyEquivalent: "r")
+        menuItem(title: L.startRestNow, symbolName: "eye.fill", action: #selector(startRestNow), keyEquivalent: "r")
     }()
 
     private lazy var resetMenuItem: NSMenuItem = {
@@ -302,7 +368,7 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
 
         let alert = NSAlert()
         alert.messageText = "Timer20"
-        alert.informativeText = "Версия \(version) (\(build))\nАвтор: Mur\n\n20 минут работы, 20 секунд отдыха."
+        alert.informativeText = "\(L.isEnglish ? "Version" : "Версия") \(version) (\(build))\n\(L.author): Mur\n\n\(L.aboutSummary)"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.icon = statusImage()
@@ -350,9 +416,9 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
         if shouldNotify {
             switch runningPhase {
             case .working:
-                notify(title: "Можно продолжать", body: "Следующий перерыв через \(format(Int(settings.workDuration))).")
+                notify(title: L.continueTitle, body: L.nextBreakBody(duration: format(Int(settings.workDuration))))
             case .resting:
-                notify(title: "Пора отдохнуть", body: "Посмотри вдаль \(format(Int(settings.restDuration))).")
+                notify(title: L.restTitle, body: L.restBody(duration: format(Int(settings.restDuration))))
             }
         }
 
@@ -364,25 +430,7 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
     }
 
     private func resetMenuTitle() -> String {
-        "Сбросить \(settings.workMinutes) \(minuteWord(settings.workMinutes))"
-    }
-
-    private func minuteWord(_ count: Int) -> String {
-        let lastTwoDigits = count % 100
-        let lastDigit = count % 10
-
-        if (11...14).contains(lastTwoDigits) {
-            return "минут"
-        }
-
-        switch lastDigit {
-        case 1:
-            return "минуту"
-        case 2...4:
-            return "минуты"
-        default:
-            return "минут"
-        }
+        L.resetTitle(minutes: settings.workMinutes)
     }
 
     private func pause(previous: RunningPhase) {
@@ -407,22 +455,22 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
         switch phase {
         case .working:
             title = format(seconds)
-            detail = "Работа: \(format(seconds))"
+            detail = "\(L.work): \(format(seconds))"
             statusSymbolName = "laptopcomputer"
-            pauseMenuItem.title = "Пауза"
+            pauseMenuItem.title = L.pause
             pauseMenuItem.image = menuImage(symbolName: "pause.fill")
         case .resting:
             title = format(seconds)
-            detail = "Отдых: \(format(seconds))"
+            detail = "\(L.rest): \(format(seconds))"
             statusSymbolName = "eye.fill"
-            pauseMenuItem.title = "Пауза"
+            pauseMenuItem.title = L.pause
             pauseMenuItem.image = menuImage(symbolName: "pause.fill")
         case let .paused(previous, remaining):
-            let label = previous == .working ? "Пауза" : "Пауза отдыха"
+            let label = previous == .working ? L.pause : L.restPause
             title = format(Int(ceil(remaining)))
             detail = "\(label): \(format(Int(ceil(remaining))))"
             statusSymbolName = "pause.fill"
-            pauseMenuItem.title = "Продолжить"
+            pauseMenuItem.title = L.resume
             pauseMenuItem.image = menuImage(symbolName: "play.fill")
         }
 
