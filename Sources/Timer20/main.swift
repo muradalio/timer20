@@ -461,7 +461,10 @@ private final class TransitionBannerController {
         }
     }
 
-    private func dismiss() {
+    func dismiss() {
+        dismissTimer?.invalidate()
+        dismissTimer = nil
+
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             panel.animator().alphaValue = 0
@@ -925,16 +928,15 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
 
         switch settings.notificationLevel {
         case .menuBarOnly:
+            bannerController?.dismiss()
             break
         case .notifications:
             notify(title: message.title, body: message.body)
             showTransitionBanner(message)
         case .strictRestOverlay:
+            bannerController?.dismiss()
             if runningPhase == .resting {
                 showStrictRestOverlay()
-            } else {
-                notify(title: message.title, body: message.body)
-                showTransitionBanner(message)
             }
         }
 
