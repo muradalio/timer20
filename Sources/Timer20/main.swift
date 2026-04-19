@@ -3,15 +3,23 @@ import Foundation
 import ServiceManagement
 import UserNotifications
 
+private enum NotificationLevel: Int, CaseIterable {
+    case menuBarOnly
+    case notifications
+    case strictRestOverlay
+}
+
 private struct AppSettings {
     private enum Key {
         static let legacyWorkMinutes = "workMinutes"
         static let workSeconds = "workSeconds"
         static let restSeconds = "restSeconds"
+        static let notificationLevel = "notificationLevel"
     }
 
     var workSeconds: Int
     var restSeconds: Int
+    var notificationLevel: NotificationLevel
 
     var workDuration: TimeInterval {
         TimeInterval(workSeconds)
@@ -26,16 +34,22 @@ private struct AppSettings {
         let savedWorkSeconds = defaults.object(forKey: Key.workSeconds) == nil ? nil : defaults.integer(forKey: Key.workSeconds)
         let legacyWorkMinutes = defaults.integer(forKey: Key.legacyWorkMinutes)
         let savedRestSeconds = defaults.integer(forKey: Key.restSeconds)
+        let savedLevelRawValue = defaults.object(forKey: Key.notificationLevel) == nil
+            ? NotificationLevel.notifications.rawValue
+            : defaults.integer(forKey: Key.notificationLevel)
+        let notificationLevel = NotificationLevel(rawValue: savedLevelRawValue) ?? .notifications
 
         return AppSettings(
             workSeconds: savedWorkSeconds ?? (legacyWorkMinutes > 0 ? legacyWorkMinutes * 60 : 20 * 60),
-            restSeconds: savedRestSeconds > 0 ? savedRestSeconds : 20
+            restSeconds: savedRestSeconds > 0 ? savedRestSeconds : 20,
+            notificationLevel: notificationLevel
         )
     }
 
     func save() {
         UserDefaults.standard.set(workSeconds, forKey: Key.workSeconds)
         UserDefaults.standard.set(restSeconds, forKey: Key.restSeconds)
+        UserDefaults.standard.set(notificationLevel.rawValue, forKey: Key.notificationLevel)
     }
 }
 
@@ -47,6 +61,10 @@ private enum L {
     static let workDuration = isEnglish ? "Work, minutes" : "Работа, минут"
     static let workDurationHint = isEnglish ? "Use 0.5 or 0:30 for 30 seconds." : "Для 30 секунд можно ввести 0,3 или 0:30."
     static let restDuration = isEnglish ? "Rest, seconds" : "Отдых, секунд"
+    static let notificationLevel = isEnglish ? "Alert level" : "Уровень уведомления"
+    static let alertMenuOnly = isEnglish ? "Blink in menu bar only" : "Просто мигать в menu bar"
+    static let alertNotifications = isEnglish ? "Show notifications" : "Показывать уведомления"
+    static let alertStrictOverlay = isEnglish ? "Blur screen during rest" : "Блюрить экран во время отдыха"
     static let save = isEnglish ? "Save" : "Сохранить"
     static let loginEnabled = isEnglish ? "Launch at login is enabled." : "Автозапуск включён."
     static let loginRequiresApproval = isEnglish
@@ -67,6 +85,8 @@ private enum L {
     static let restPause = isEnglish ? "Rest paused" : "Пауза отдыха"
     static let continueTitle = isEnglish ? "You can continue" : "Можно продолжать"
     static let restTitle = isEnglish ? "Time to rest" : "Пора отдохнуть"
+    static let restOverlayBody = isEnglish ? "Look away and let your eyes relax." : "Посмотри вдаль и дай глазам отдохнуть."
+    static let skipRest = isEnglish ? "Skip rest, keep going!" : "Не хочу отдыхать, фигачим дальше!"
     static let author = isEnglish ? "Author" : "Автор"
     static let aboutSummary = isEnglish ? "Work, then rest your eyes." : "20 минут работы, 20 секунд отдыха."
 
@@ -163,13 +183,14 @@ private final class SettingsWindowController: NSWindowController {
     private let restField = NSTextField()
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
     private let loginStatusLabel = NSTextField(labelWithString: "")
+    private var notificationLevelButtons: [NSButton] = []
     private let onSave: (AppSettings) -> Void
 
     init(settings: AppSettings, onSave: @escaping (AppSettings) -> Void) {
         self.onSave = onSave
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 390, height: 250),
+            contentRect: NSRect(x: 0, y: 0, width: 430, height: 370),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -189,6 +210,7 @@ private final class SettingsWindowController: NSWindowController {
     func show(settings: AppSettings) {
         workField.stringValue = formatWorkInput(seconds: settings.workSeconds)
         restField.integerValue = settings.restSeconds
+        selectNotificationLevel(settings.notificationLevel)
         launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
         updateLoginStatus()
 
@@ -204,6 +226,7 @@ private final class SettingsWindowController: NSWindowController {
         restField.placeholderString = "20"
         workField.alignment = .right
         restField.alignment = .right
+        notificationLevelButtons = makeNotificationLevelButtons(selected: settings.notificationLevel)
 
         launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
         updateLoginStatus()
@@ -216,6 +239,7 @@ private final class SettingsWindowController: NSWindowController {
         workHint.font = .systemFont(ofSize: 11)
         workHint.textColor = .secondaryLabelColor
         let restRow = row(label: L.restDuration, field: restField)
+        let notificationLevelStack = notificationLevelStack()
 
         let saveButton = NSButton(title: L.save, target: self, action: #selector(save))
         saveButton.bezelStyle = .rounded
@@ -226,6 +250,7 @@ private final class SettingsWindowController: NSWindowController {
             workRow,
             workHint,
             restRow,
+            notificationLevelStack,
             launchAtLoginCheckbox,
             loginStatusLabel,
             saveButton
@@ -253,10 +278,15 @@ private final class SettingsWindowController: NSWindowController {
     @objc private func save() {
         let workSeconds = max(1, min(240 * 60, parseWorkSeconds(from: workField.stringValue)))
         let restSeconds = max(1, min(600, restField.integerValue))
+        let notificationLevel = selectedNotificationLevel()
         workField.stringValue = formatWorkInput(seconds: workSeconds)
         restField.integerValue = restSeconds
 
-        let settings = AppSettings(workSeconds: workSeconds, restSeconds: restSeconds)
+        let settings = AppSettings(
+            workSeconds: workSeconds,
+            restSeconds: restSeconds,
+            notificationLevel: notificationLevel
+        )
         settings.save()
         configureLaunchAtLogin(enabled: launchAtLoginCheckbox.state == .on)
         onSave(settings)
@@ -291,6 +321,59 @@ private final class SettingsWindowController: NSWindowController {
         let minutes = seconds / 60
         let restSeconds = seconds % 60
         return "\(minutes):\(String(format: "%02d", restSeconds))"
+    }
+
+    private func makeNotificationLevelButtons(selected: NotificationLevel) -> [NSButton] {
+        NotificationLevel.allCases.map { level in
+            let button = NSButton(radioButtonWithTitle: title(for: level), target: self, action: #selector(selectNotificationLevelButton))
+            button.tag = level.rawValue
+            button.state = level == selected ? .on : .off
+            return button
+        }
+    }
+
+    @objc private func selectNotificationLevelButton(_ sender: NSButton) {
+        for button in notificationLevelButtons {
+            button.state = button == sender ? .on : .off
+        }
+    }
+
+    private func notificationLevelStack() -> NSView {
+        let label = NSTextField(labelWithString: L.notificationLevel)
+        label.widthAnchor.constraint(equalToConstant: 150).isActive = true
+
+        let buttonsStack = NSStackView(views: notificationLevelButtons)
+        buttonsStack.orientation = .vertical
+        buttonsStack.alignment = .leading
+        buttonsStack.spacing = 6
+
+        let stack = NSStackView(views: [label, buttonsStack])
+        stack.orientation = .horizontal
+        stack.alignment = .top
+        stack.spacing = 10
+        return stack
+    }
+
+    private func selectNotificationLevel(_ level: NotificationLevel) {
+        for button in notificationLevelButtons {
+            button.state = button.tag == level.rawValue ? .on : .off
+        }
+    }
+
+    private func selectedNotificationLevel() -> NotificationLevel {
+        let selectedRawValue = notificationLevelButtons.first { $0.state == .on }?.tag
+        return NotificationLevel(rawValue: selectedRawValue ?? NotificationLevel.notifications.rawValue) ?? .notifications
+    }
+
+    private func title(for level: NotificationLevel) -> String {
+        switch level {
+        case .menuBarOnly:
+            return L.alertMenuOnly
+        case .notifications:
+            return L.alertNotifications
+        case .strictRestOverlay:
+            return L.alertStrictOverlay
+        }
     }
 
     private func configureLaunchAtLogin(enabled: Bool) {
@@ -457,6 +540,194 @@ private final class TransitionBannerController {
     }
 }
 
+private final class RestOverlayPanel: NSPanel {
+    override var canBecomeKey: Bool {
+        true
+    }
+}
+
+@MainActor
+private final class StrictRestOverlayController {
+    private let panel: RestOverlayPanel
+    private let timerLabel = NSTextField(labelWithString: "00:00")
+    private var endDate = Date()
+    private var countdownTimer: Timer?
+    private var onSkip: (() -> Void)?
+
+    init() {
+        let screenFrame = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        panel = RestOverlayPanel(
+            contentRect: screenFrame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .screenSaver
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+
+        setupContent()
+    }
+
+    func show(until endDate: Date, onSkip: @escaping () -> Void) {
+        self.endDate = endDate
+        self.onSkip = onSkip
+        positionPanel()
+        updateTimer()
+
+        countdownTimer?.invalidate()
+        countdownTimer = Timer.scheduledTimer(
+            timeInterval: 0.2,
+            target: self,
+            selector: #selector(updateTimer),
+            userInfo: nil,
+            repeats: true
+        )
+        RunLoop.main.add(countdownTimer!, forMode: .common)
+
+        panel.alphaValue = 0
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            panel.animator().alphaValue = 1
+        }
+    }
+
+    func dismiss() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        onSkip = nil
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            panel.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            Task { @MainActor in
+                self?.panel.orderOut(nil)
+            }
+        }
+    }
+
+    @objc private func skipRest() {
+        let skip = onSkip
+        dismiss()
+        skip?()
+    }
+
+    @objc private func updateTimer() {
+        let remaining = max(0, Int(ceil(endDate.timeIntervalSinceNow)))
+        timerLabel.stringValue = format(remaining)
+
+        if remaining <= 0 {
+            dismiss()
+        }
+    }
+
+    private func setupContent() {
+        let visualEffect = NSVisualEffectView()
+        visualEffect.material = .fullScreenUI
+        visualEffect.blendingMode = .behindWindow
+        visualEffect.state = .active
+        visualEffect.translatesAutoresizingMaskIntoConstraints = false
+
+        let dimView = NSView()
+        dimView.wantsLayer = true
+        dimView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.28).cgColor
+        dimView.translatesAutoresizingMaskIntoConstraints = false
+
+        let iconView = NSImageView(image: image(symbolName: "eye.fill", size: 46) ?? NSImage())
+        iconView.contentTintColor = .labelColor
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: L.restTitle)
+        titleLabel.font = .boldSystemFont(ofSize: 28)
+        titleLabel.textColor = .labelColor
+        titleLabel.alignment = .center
+
+        timerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 64, weight: .semibold)
+        timerLabel.textColor = .labelColor
+        timerLabel.alignment = .center
+
+        let bodyLabel = NSTextField(labelWithString: L.restOverlayBody)
+        bodyLabel.font = .systemFont(ofSize: 15)
+        bodyLabel.textColor = .secondaryLabelColor
+        bodyLabel.alignment = .center
+
+        let skipButton = NSButton(title: L.skipRest, target: self, action: #selector(skipRest))
+        skipButton.bezelStyle = .rounded
+        skipButton.image = image(symbolName: "rocket.fill", size: 16)
+        skipButton.imagePosition = .imageLeading
+
+        let cardStack = NSStackView(views: [iconView, titleLabel, timerLabel, bodyLabel, skipButton])
+        cardStack.orientation = .vertical
+        cardStack.alignment = .centerX
+        cardStack.spacing = 14
+        cardStack.edgeInsets = NSEdgeInsets(top: 34, left: 44, bottom: 34, right: 44)
+        cardStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let card = NSVisualEffectView()
+        card.material = .hudWindow
+        card.blendingMode = .withinWindow
+        card.state = .active
+        card.wantsLayer = true
+        card.layer?.cornerRadius = 8
+        card.layer?.masksToBounds = true
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(cardStack)
+
+        let rootView = NSView()
+        rootView.addSubview(visualEffect)
+        rootView.addSubview(dimView)
+        rootView.addSubview(card)
+        panel.contentView = rootView
+
+        NSLayoutConstraint.activate([
+            visualEffect.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            visualEffect.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            visualEffect.topAnchor.constraint(equalTo: rootView.topAnchor),
+            visualEffect.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
+
+            dimView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            dimView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            dimView.topAnchor.constraint(equalTo: rootView.topAnchor),
+            dimView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
+
+            card.centerXAnchor.constraint(equalTo: rootView.centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: rootView.centerYAnchor),
+            card.widthAnchor.constraint(equalToConstant: 430),
+
+            cardStack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            cardStack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            cardStack.topAnchor.constraint(equalTo: card.topAnchor),
+            cardStack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 56),
+            iconView.heightAnchor.constraint(equalToConstant: 56)
+        ])
+    }
+
+    private func positionPanel() {
+        let screenFrame = NSScreen.main?.frame ?? panel.frame
+        panel.setFrame(screenFrame, display: true)
+    }
+
+    private func image(symbolName: String, size: CGFloat) -> NSImage? {
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        image?.isTemplate = true
+        image?.size = NSSize(width: size, height: size)
+        return image
+    }
+
+    private func format(_ totalSeconds: Int) -> String {
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+}
+
 @MainActor
 private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var settings = AppSettings.load()
@@ -467,6 +738,7 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
     private var lastVisibleSecond: Int = -1
     private var settingsWindowController: SettingsWindowController?
     private var bannerController: TransitionBannerController?
+    private var strictRestOverlayController: StrictRestOverlayController?
     private var pulseTimer: Timer?
     private var pulseTicks = 0
 
@@ -528,6 +800,7 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
         pulseTimer?.invalidate()
+        strictRestOverlayController?.dismiss()
     }
 
     nonisolated func userNotificationCenter(
@@ -623,6 +896,10 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
         phaseEndsAt = Date().addingTimeInterval(duration)
         lastVisibleSecond = -1
 
+        if runningPhase == .working {
+            strictRestOverlayController?.dismiss()
+        }
+
         timer = Timer.scheduledTimer(
             timeInterval: 0.5,
             target: self,
@@ -641,14 +918,44 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
 
     private func announceTransition(to runningPhase: RunningPhase) {
         let message = transitionMessage(for: runningPhase)
-        notify(title: message.title, body: message.body)
 
+        switch settings.notificationLevel {
+        case .menuBarOnly:
+            break
+        case .notifications:
+            notify(title: message.title, body: message.body)
+            showTransitionBanner(message)
+        case .strictRestOverlay:
+            if runningPhase == .resting {
+                showStrictRestOverlay()
+            } else {
+                notify(title: message.title, body: message.body)
+                showTransitionBanner(message)
+            }
+        }
+
+        pulseStatusItem()
+    }
+
+    private func showTransitionBanner(_ message: (title: String, body: String, symbolName: String)) {
         if bannerController == nil {
             bannerController = TransitionBannerController()
         }
         bannerController?.show(title: message.title, body: message.body, symbolName: message.symbolName)
+    }
 
-        pulseStatusItem()
+    private func showStrictRestOverlay() {
+        if strictRestOverlayController == nil {
+            strictRestOverlayController = StrictRestOverlayController()
+        }
+
+        strictRestOverlayController?.show(until: phaseEndsAt) { [weak self] in
+            self?.skipRest()
+        }
+    }
+
+    private func skipRest() {
+        start(.working, duration: settings.workDuration, shouldNotify: false)
     }
 
     private func transitionMessage(for runningPhase: RunningPhase) -> (title: String, body: String, symbolName: String) {
