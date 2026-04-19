@@ -795,7 +795,10 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
             }
         }
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: 58)
+        if #available(macOS 10.12, *) {
+            statusItem.autosaveName = "dev.local.timer20.status-item"
+        }
         statusItem.button?.image = statusImage()
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
@@ -1025,20 +1028,20 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
 
         switch phase {
         case .working:
-            title = format(seconds)
+            title = compactFormat(seconds)
             detail = "\(L.work): \(format(seconds))"
             statusSymbolName = "laptopcomputer"
             pauseMenuItem.title = L.pause
             pauseMenuItem.image = menuImage(symbolName: "pause.fill")
         case .resting:
-            title = format(seconds)
+            title = compactFormat(seconds)
             detail = "\(L.rest): \(format(seconds))"
             statusSymbolName = "eye.fill"
             pauseMenuItem.title = L.pause
             pauseMenuItem.image = menuImage(symbolName: "pause.fill")
         case let .paused(previous, remaining):
             let label = previous == .working ? L.pause : L.restPause
-            title = format(Int(ceil(remaining)))
+            title = compactFormat(Int(ceil(remaining)))
             detail = "\(label): \(format(Int(ceil(remaining))))"
             statusSymbolName = "pause.fill"
             pauseMenuItem.title = L.resume
@@ -1088,6 +1091,17 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func compactFormat(_ totalSeconds: Int) -> String {
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+
+        if minutes >= 10 {
+            return "\(minutes)m"
+        }
+
+        return String(format: "%d:%02d", minutes, seconds)
     }
 
     private func notify(title: String, body: String) {
