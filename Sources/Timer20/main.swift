@@ -659,8 +659,9 @@ private final class StrictRestOverlayController {
 
         let skipButton = NSButton(title: L.skipRest, target: self, action: #selector(skipRest))
         skipButton.bezelStyle = .rounded
-        skipButton.image = image(symbolName: "rocket.fill", size: 16)
+        skipButton.image = image(symbolName: "rocket.fill", fallbackSymbolName: "arrow.up.circle.fill", size: 17)
         skipButton.imagePosition = .imageLeading
+        skipButton.imageScaling = .scaleProportionallyDown
 
         let cardStack = NSStackView(views: [iconView, titleLabel, timerLabel, bodyLabel, skipButton])
         cardStack.orientation = .vertical
@@ -714,8 +715,11 @@ private final class StrictRestOverlayController {
         panel.setFrame(screenFrame, display: true)
     }
 
-    private func image(symbolName: String, size: CGFloat) -> NSImage? {
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+    private func image(symbolName: String, fallbackSymbolName: String? = nil, size: CGFloat) -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: size, weight: .semibold)
+        let baseImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+            ?? fallbackSymbolName.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+        let image = baseImage?.withSymbolConfiguration(configuration) ?? baseImage
         image?.isTemplate = true
         image?.size = NSSize(width: size, height: size)
         return image
