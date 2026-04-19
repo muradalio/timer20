@@ -569,6 +569,8 @@ private final class StrictRestOverlayController {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
         setupContent()
@@ -592,6 +594,7 @@ private final class StrictRestOverlayController {
 
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
 
         NSAnimationContext.runAnimationGroup { context in
