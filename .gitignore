@@ -2,6 +2,7 @@
 .build/
 build/
 dist/
+Resources/AppIcon.iconset/
 .swiftpm/
 .vscode/
 DerivedData/

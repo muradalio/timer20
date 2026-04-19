@@ -7,16 +7,18 @@ CONFIGURATION="${1:-release}"
 APP_DIR="$ROOT_DIR/build/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
+RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 cd "$ROOT_DIR"
 
 swift build -c "$CONFIGURATION"
 
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp ".build/$CONFIGURATION/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
+cp "Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 
 chmod +x "$MACOS_DIR/$APP_NAME"
 
