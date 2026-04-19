@@ -5,15 +5,16 @@ import UserNotifications
 
 private struct AppSettings {
     private enum Key {
-        static let workMinutes = "workMinutes"
+        static let legacyWorkMinutes = "workMinutes"
+        static let workSeconds = "workSeconds"
         static let restSeconds = "restSeconds"
     }
 
-    var workMinutes: Int
+    var workSeconds: Int
     var restSeconds: Int
 
     var workDuration: TimeInterval {
-        TimeInterval(workMinutes * 60)
+        TimeInterval(workSeconds)
     }
 
     var restDuration: TimeInterval {
@@ -22,17 +23,18 @@ private struct AppSettings {
 
     static func load() -> AppSettings {
         let defaults = UserDefaults.standard
-        let savedWorkMinutes = defaults.integer(forKey: Key.workMinutes)
+        let savedWorkSeconds = defaults.object(forKey: Key.workSeconds) == nil ? nil : defaults.integer(forKey: Key.workSeconds)
+        let legacyWorkMinutes = defaults.integer(forKey: Key.legacyWorkMinutes)
         let savedRestSeconds = defaults.integer(forKey: Key.restSeconds)
 
         return AppSettings(
-            workMinutes: savedWorkMinutes > 0 ? savedWorkMinutes : 20,
+            workSeconds: savedWorkSeconds ?? (legacyWorkMinutes > 0 ? legacyWorkMinutes * 60 : 20 * 60),
             restSeconds: savedRestSeconds > 0 ? savedRestSeconds : 20
         )
     }
 
     func save() {
-        UserDefaults.standard.set(workMinutes, forKey: Key.workMinutes)
+        UserDefaults.standard.set(workSeconds, forKey: Key.workSeconds)
         UserDefaults.standard.set(restSeconds, forKey: Key.restSeconds)
     }
 }
@@ -43,6 +45,7 @@ private enum L {
     static let launchAtLogin = isEnglish ? "Launch at login" : "Запускать при входе в macOS"
     static let settings = isEnglish ? "Settings" : "Настройки"
     static let workDuration = isEnglish ? "Work, minutes" : "Работа, минут"
+    static let workDurationHint = isEnglish ? "Use 0.5 or 0:30 for 30 seconds." : "Для 30 секунд можно ввести 0,3 или 0:30."
     static let restDuration = isEnglish ? "Rest, seconds" : "Отдых, секунд"
     static let save = isEnglish ? "Save" : "Сохранить"
     static let loginEnabled = isEnglish ? "Launch at login is enabled." : "Автозапуск включён."
@@ -75,13 +78,35 @@ private enum L {
         isEnglish ? "Look away for \(duration)." : "Посмотри вдаль \(duration)."
     }
 
-    static func resetTitle(minutes: Int) -> String {
+    static func resetTitle(seconds: Int) -> String {
         if isEnglish {
-            let unit = minutes == 1 ? "minute" : "minutes"
-            return "Reset \(minutes) \(unit)"
+            return "Reset \(durationText(seconds: seconds))"
         }
 
-        return "Сбросить \(minutes) \(russianMinuteWord(minutes))"
+        return "Сбросить \(durationText(seconds: seconds))"
+    }
+
+    static func durationText(seconds: Int) -> String {
+        if seconds < 60 {
+            if isEnglish {
+                let unit = seconds == 1 ? "second" : "seconds"
+                return "\(seconds) \(unit)"
+            }
+            return "\(seconds) \(russianSecondWord(seconds))"
+        }
+
+        if seconds.isMultiple(of: 60) {
+            let minutes = seconds / 60
+            if isEnglish {
+                let unit = minutes == 1 ? "minute" : "minutes"
+                return "\(minutes) \(unit)"
+            }
+            return "\(minutes) \(russianMinuteWord(minutes))"
+        }
+
+        let minutes = seconds / 60
+        let restSeconds = seconds % 60
+        return String(format: "%02d:%02d", minutes, restSeconds)
     }
 
     private static func russianMinuteWord(_ count: Int) -> String {
@@ -99,6 +124,24 @@ private enum L {
             return "минуты"
         default:
             return "минут"
+        }
+    }
+
+    private static func russianSecondWord(_ count: Int) -> String {
+        let lastTwoDigits = count % 100
+        let lastDigit = count % 10
+
+        if (11...14).contains(lastTwoDigits) {
+            return "секунд"
+        }
+
+        switch lastDigit {
+        case 1:
+            return "секунду"
+        case 2...4:
+            return "секунды"
+        default:
+            return "секунд"
         }
     }
 }
@@ -126,7 +169,7 @@ private final class SettingsWindowController: NSWindowController {
         self.onSave = onSave
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 220),
+            contentRect: NSRect(x: 0, y: 0, width: 390, height: 250),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -144,7 +187,7 @@ private final class SettingsWindowController: NSWindowController {
     }
 
     func show(settings: AppSettings) {
-        workField.integerValue = settings.workMinutes
+        workField.stringValue = formatWorkInput(seconds: settings.workSeconds)
         restField.integerValue = settings.restSeconds
         launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
         updateLoginStatus()
@@ -155,7 +198,7 @@ private final class SettingsWindowController: NSWindowController {
     }
 
     private func setupContent(settings: AppSettings) {
-        workField.integerValue = settings.workMinutes
+        workField.stringValue = formatWorkInput(seconds: settings.workSeconds)
         restField.integerValue = settings.restSeconds
         workField.placeholderString = "20"
         restField.placeholderString = "20"
@@ -169,6 +212,9 @@ private final class SettingsWindowController: NSWindowController {
         title.font = .boldSystemFont(ofSize: 16)
 
         let workRow = row(label: L.workDuration, field: workField)
+        let workHint = NSTextField(labelWithString: L.workDurationHint)
+        workHint.font = .systemFont(ofSize: 11)
+        workHint.textColor = .secondaryLabelColor
         let restRow = row(label: L.restDuration, field: restField)
 
         let saveButton = NSButton(title: L.save, target: self, action: #selector(save))
@@ -178,6 +224,7 @@ private final class SettingsWindowController: NSWindowController {
         let stack = NSStackView(views: [
             title,
             workRow,
+            workHint,
             restRow,
             launchAtLoginCheckbox,
             loginStatusLabel,
@@ -204,16 +251,46 @@ private final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func save() {
-        let workMinutes = max(1, min(240, workField.integerValue))
+        let workSeconds = max(1, min(240 * 60, parseWorkSeconds(from: workField.stringValue)))
         let restSeconds = max(1, min(600, restField.integerValue))
-        workField.integerValue = workMinutes
+        workField.stringValue = formatWorkInput(seconds: workSeconds)
         restField.integerValue = restSeconds
 
-        let settings = AppSettings(workMinutes: workMinutes, restSeconds: restSeconds)
+        let settings = AppSettings(workSeconds: workSeconds, restSeconds: restSeconds)
         settings.save()
         configureLaunchAtLogin(enabled: launchAtLoginCheckbox.state == .on)
         onSave(settings)
         window?.close()
+    }
+
+    private func parseWorkSeconds(from rawValue: String) -> Int {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = value.replacingOccurrences(of: ",", with: ":")
+
+        if normalized.contains(":") {
+            let parts = normalized.split(separator: ":", omittingEmptySubsequences: false)
+            let minutes = Int(parts.first ?? "0") ?? 0
+            let secondsPart = parts.dropFirst().first.map(String.init) ?? "0"
+            let paddedSeconds = secondsPart.count == 1 ? "\(secondsPart)0" : secondsPart
+            let seconds = Int(paddedSeconds) ?? 0
+            return minutes * 60 + min(seconds, 59)
+        }
+
+        if let minutes = Double(value.replacingOccurrences(of: ",", with: ".")) {
+            return Int((minutes * 60).rounded())
+        }
+
+        return 20 * 60
+    }
+
+    private func formatWorkInput(seconds: Int) -> String {
+        if seconds.isMultiple(of: 60) {
+            return "\(seconds / 60)"
+        }
+
+        let minutes = seconds / 60
+        let restSeconds = seconds % 60
+        return "\(minutes):\(String(format: "%02d", restSeconds))"
     }
 
     private func configureLaunchAtLogin(enabled: Bool) {
@@ -611,7 +688,7 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
     }
 
     private func resetMenuTitle() -> String {
-        L.resetTitle(minutes: settings.workMinutes)
+        L.resetTitle(seconds: settings.workSeconds)
     }
 
     private func pause(previous: RunningPhase) {
