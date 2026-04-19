@@ -254,6 +254,133 @@ private final class SettingsWindowController: NSWindowController {
 }
 
 @MainActor
+private final class TransitionBannerController {
+    private let panel: NSPanel
+    private let iconView = NSImageView()
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let bodyLabel = NSTextField(labelWithString: "")
+    private var dismissTimer: Timer?
+
+    init() {
+        panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 112),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        setupContent()
+    }
+
+    func show(title: String, body: String, symbolName: String) {
+        dismissTimer?.invalidate()
+
+        titleLabel.stringValue = title
+        bodyLabel.stringValue = body
+        iconView.image = image(symbolName: symbolName, size: 28)
+
+        positionPanel()
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            panel.animator().alphaValue = 1
+        }
+
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.dismiss()
+            }
+        }
+    }
+
+    private func dismiss() {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            panel.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            Task { @MainActor in
+                self?.panel.orderOut(nil)
+            }
+        }
+    }
+
+    private func setupContent() {
+        let visualEffect = NSVisualEffectView()
+        visualEffect.material = .hudWindow
+        visualEffect.blendingMode = .behindWindow
+        visualEffect.state = .active
+        visualEffect.wantsLayer = true
+        visualEffect.layer?.cornerRadius = 8
+        visualEffect.layer?.masksToBounds = true
+        visualEffect.translatesAutoresizingMaskIntoConstraints = false
+
+        iconView.symbolConfiguration = .init(pointSize: 26, weight: .semibold)
+        iconView.contentTintColor = .labelColor
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.font = .boldSystemFont(ofSize: 17)
+        titleLabel.textColor = .labelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+
+        bodyLabel.font = .systemFont(ofSize: 13)
+        bodyLabel.textColor = .secondaryLabelColor
+        bodyLabel.lineBreakMode = .byTruncatingTail
+
+        let textStack = NSStackView(views: [titleLabel, bodyLabel])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 4
+
+        let contentStack = NSStackView(views: [iconView, textStack])
+        contentStack.orientation = .horizontal
+        contentStack.alignment = .centerY
+        contentStack.spacing = 14
+        contentStack.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+
+        visualEffect.addSubview(contentStack)
+        panel.contentView = visualEffect
+
+        NSLayoutConstraint.activate([
+            contentStack.leadingAnchor.constraint(equalTo: visualEffect.leadingAnchor),
+            contentStack.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor),
+            contentStack.topAnchor.constraint(equalTo: visualEffect.topAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 34),
+            iconView.heightAnchor.constraint(equalToConstant: 34)
+        ])
+    }
+
+    private func positionPanel() {
+        guard let screen = NSScreen.main else {
+            panel.center()
+            return
+        }
+
+        let visibleFrame = screen.visibleFrame
+        let frame = panel.frame
+        let x = visibleFrame.midX - frame.width / 2
+        let y = visibleFrame.maxY - frame.height - 16
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    private func image(symbolName: String, size: CGFloat) -> NSImage? {
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        image?.isTemplate = true
+        image?.size = NSSize(width: size, height: size)
+        return image
+    }
+}
+
+@MainActor
 private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var settings = AppSettings.load()
     private var statusItem: NSStatusItem!
@@ -262,6 +389,9 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
     private var phaseEndsAt = Date()
     private var lastVisibleSecond: Int = -1
     private var settingsWindowController: SettingsWindowController?
+    private var bannerController: TransitionBannerController?
+    private var pulseTimer: Timer?
+    private var pulseTicks = 0
 
     private lazy var menu: NSMenu = {
         let menu = NSMenu()
@@ -320,6 +450,7 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
 
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
+        pulseTimer?.invalidate()
     }
 
     nonisolated func userNotificationCenter(
@@ -392,6 +523,17 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
         }
     }
 
+    @objc private func pulseTick() {
+        pulseTicks += 1
+        statusItem.button?.alphaValue = pulseTicks.isMultiple(of: 2) ? 0.35 : 1
+
+        if pulseTicks >= 8 {
+            pulseTimer?.invalidate()
+            pulseTimer = nil
+            statusItem.button?.alphaValue = 1
+        }
+    }
+
     private func apply(_ newSettings: AppSettings) {
         settings = newSettings
         updateStaticMenuTitles()
@@ -414,15 +556,54 @@ private final class Timer20App: NSObject, NSApplicationDelegate, UNUserNotificat
         RunLoop.main.add(timer!, forMode: .common)
 
         if shouldNotify {
-            switch runningPhase {
-            case .working:
-                notify(title: L.continueTitle, body: L.nextBreakBody(duration: format(Int(settings.workDuration))))
-            case .resting:
-                notify(title: L.restTitle, body: L.restBody(duration: format(Int(settings.restDuration))))
-            }
+            announceTransition(to: runningPhase)
         }
 
         updateMenuBar(force: true)
+    }
+
+    private func announceTransition(to runningPhase: RunningPhase) {
+        let message = transitionMessage(for: runningPhase)
+        notify(title: message.title, body: message.body)
+
+        if bannerController == nil {
+            bannerController = TransitionBannerController()
+        }
+        bannerController?.show(title: message.title, body: message.body, symbolName: message.symbolName)
+
+        pulseStatusItem()
+    }
+
+    private func transitionMessage(for runningPhase: RunningPhase) -> (title: String, body: String, symbolName: String) {
+        switch runningPhase {
+        case .working:
+            return (
+                title: L.continueTitle,
+                body: L.nextBreakBody(duration: format(Int(settings.workDuration))),
+                symbolName: "laptopcomputer"
+            )
+        case .resting:
+            return (
+                title: L.restTitle,
+                body: L.restBody(duration: format(Int(settings.restDuration))),
+                symbolName: "eye.fill"
+            )
+        }
+    }
+
+    private func pulseStatusItem() {
+        pulseTimer?.invalidate()
+        pulseTicks = 0
+        statusItem.button?.alphaValue = 1
+
+        pulseTimer = Timer.scheduledTimer(
+            timeInterval: 0.16,
+            target: self,
+            selector: #selector(pulseTick),
+            userInfo: nil,
+            repeats: true
+        )
+        RunLoop.main.add(pulseTimer!, forMode: .common)
     }
 
     private func updateStaticMenuTitles() {
