@@ -1,74 +1,76 @@
 # Timer20
 
-Timer20 - маленький таймер для Mac, который помогает глазам отдыхать.
+Timer20 is a small Mac menu bar timer that helps your eyes rest.
 
-Идея простая: когда долго смотришь в экран, глаза устают. Timer20 напоминает делать короткие перерывы: по умолчанию 20 минут работы, потом 20 секунд отдыха, и дальше по кругу.
+The idea is simple: when you look at a screen for a long time, your eyes get tired. Timer20 reminds you to take short breaks: by default, 20 minutes of work, then 20 seconds of rest, then the cycle starts again.
 
-Приложение живёт в верхней строке меню macOS рядом с часами. Обычного окна у него нет.
+The app lives in the macOS menu bar next to the clock. It does not have a regular main window.
 
-## Как работает
+Russian version: [README_RU.md](README_RU.md)
 
-- В строке меню видно оставшееся время.
-- Когда рабочее время закончилось, приложение напоминает отдохнуть.
-- Во время отдыха идёт короткий таймер.
-- После отдыха таймер сам запускает новый рабочий цикл.
-- В настройках можно поменять длительность работы и отдыха.
+## How It Works
 
-Есть несколько уровней напоминаний:
+- The menu bar shows the remaining time.
+- When work time ends, the app reminds you to rest.
+- During rest, a short countdown runs.
+- After rest, the next work cycle starts automatically.
+- You can change work and rest durations in settings.
 
-- просто мигать в строке меню;
-- показывать обычные уведомления;
-- показывать полноэкранный blur-экран на время отдыха.
+Timer20 has several alert levels:
 
-Если включён полноэкранный режим отдыха, на экране будет кнопка:
+- blink in the menu bar only;
+- show regular notifications;
+- show a full-screen blur overlay during rest.
+
+If the full-screen rest mode is enabled, the screen shows this button:
 
 ```text
 Не хочу отдыхать, фигачим дальше!
 ```
 
-Она пропускает отдых и запускает новый рабочий цикл.
+It skips the rest and starts a new work cycle.
 
-## Как запустить
+## How To Launch
 
-1. Распакуйте `Timer20-for-friends.zip`.
-2. Перетащите `Timer20.app` в папку `Applications`.
-3. Откройте `Applications`.
-4. Нажмите правой кнопкой на `Timer20.app`.
-5. Выберите `Open`.
-6. Подтвердите запуск.
+1. Unzip `Timer20.zip`.
+2. Drag `Timer20.app` into the `Applications` folder.
+3. Open `Applications`.
+4. Right-click `Timer20.app`.
+5. Choose `Open`.
+6. Confirm the launch.
 
-Обычный двойной клик может не сработать с первого раза, потому что приложение пока не подписано и не notarized через Apple для публичного распространения. Через правый клик -> `Open` macOS обычно разрешает запуск.
+A normal double-click may not work the first time because the app is not yet Developer ID signed and notarized for public distribution. Right-click -> `Open` usually lets macOS allow the app.
 
-## После запуска
+## After Launch
 
-Timer20 появится в строке меню рядом с часами.
+Timer20 appears in the menu bar next to the clock.
 
-Кликните по нему, чтобы открыть меню:
+Click it to open the menu:
 
-- `Пауза` - остановить таймер;
-- `Начать отдых сейчас` - сразу запустить отдых;
-- `Сбросить ...` - начать рабочий цикл заново;
-- `Настройки...` - поменять время, автозапуск и уровень уведомлений;
-- `Выйти` - закрыть приложение.
+- `Pause` - pause the timer;
+- `Start rest now` - start rest immediately;
+- `Reset ...` - restart the work cycle;
+- `Settings...` - change durations, launch at login, and alert level;
+- `Quit` - close the app.
 
-При первом запуске macOS может попросить разрешить уведомления. Лучше разрешить, если хотите видеть напоминания.
+On first launch, macOS may ask for notification permission. Allow it if you want to see reminders.
 
-## Автозапуск
+## Launch At Login
 
-Если хотите, чтобы Timer20 запускался сам после входа в macOS:
+To start Timer20 automatically when you log into macOS:
 
-1. Кликните Timer20 в строке меню.
-2. Откройте `Настройки...`.
-3. Включите `Запускать при входе в macOS`.
-4. Нажмите `Сохранить`.
+1. Click Timer20 in the menu bar.
+2. Open `Settings...`.
+3. Enable `Launch at login`.
+4. Click `Save`.
 
-## Если приложение не запускается
+## If The App Does Not Open
 
-Попробуйте так:
+Try this:
 
-1. Откройте `System Settings`.
-2. Перейдите в `Privacy & Security`.
-3. Найдите сообщение о заблокированном `Timer20`.
-4. Нажмите `Open Anyway`.
+1. Open `System Settings`.
+2. Go to `Privacy & Security`.
+3. Find the message about blocked `Timer20`.
+4. Click `Open Anyway`.
 
-Если такого пункта нет, удалите приложение из `Applications`, распакуйте zip заново и повторите запуск через правый клик -> `Open`.
+If that option is not shown, delete the app from `Applications`, unzip the archive again, and repeat right-click -> `Open`.
