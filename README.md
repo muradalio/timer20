@@ -74,3 +74,57 @@ Try this:
 4. Click `Open Anyway`.
 
 If that option is not shown, delete the app from `Applications`, unzip the archive again, and repeat right-click -> `Open`.
+
+## Build From Source
+
+Requirements:
+
+- macOS 13 or newer;
+- Xcode with Swift 6 or newer;
+- command line tools installed and selected with `xcode-select`.
+
+Clone the repository and build:
+
+```sh
+git clone <repo-url>
+cd timer20
+make app
+```
+
+The built app will be created here:
+
+```text
+build/Timer20.app
+```
+
+Run the local build:
+
+```sh
+make run
+```
+
+Install into `/Applications`:
+
+```sh
+make install
+```
+
+Run the installed app:
+
+```sh
+make run-installed
+```
+
+Clean local build artifacts:
+
+```sh
+make clean
+```
+
+Generate the app icon manually if needed:
+
+```sh
+swift Scripts/generate-icon.swift
+```
+
+The local build is ad-hoc signed for development. For public distribution, sign with a Developer ID certificate and notarize the app with Apple.
